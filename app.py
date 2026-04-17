@@ -24,6 +24,10 @@ persona_prompts = {
     "関西弁の友達": "あなたは関西弁の友達です。フランクに関西弁で話してください。",
 }
 
+uploadfile = st.file_uploader("ラベル", type = ["txt"])
+if uploadfile is not None:
+    uploadprompt = uploadfile.read().decode("utf-8")
+
 # session_stateの初期化(if文で「まだ無ければ作る」)
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -48,10 +52,16 @@ if user_input:
         st.write(user_input)
     with st.spinner("回答を生成中..."):
         try:
-            response = client.chat.completions.create(
-                model = "google/gemma-3-4b-it:free",
-                messages = [{"role": "user", "content": persona_prompts[persona]}] + st.session_state.messages    #ペルソナと履歴全体を渡す
-            )
+            if uploadfile is None:
+                response = client.chat.completions.create(
+                    model = "google/gemma-3-4b-it:free",
+                    messages = [{"role": "user", "content": persona_prompts[persona]}] + st.session_state.messages    #ペルソナと履歴全体を渡す
+                )
+            else:
+                response = client.chat.completions.create(
+                    model = "google/gemma-3-4b-it:free",
+                    messages = [{"role": "user", "content": persona_prompts[persona]}] + [{"role": "user", "content": "以下の文書を参考に答えてください：\n\n" + uploadprompt}] + st.session_state.messages    #ペルソナと履歴全体を渡す
+                )
             answer = response.choices[0].message.content
             # AIの回答を追加
             st.session_state.messages.append({"role": "assistant", "content": answer})
