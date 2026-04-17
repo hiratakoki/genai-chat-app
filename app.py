@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 from openai import OpenAI
 import httpx
+from rag import chunk_text, embed_chunks, search
 
 load_dotenv()
 api_key = os.getenv("OPENROUTER_API_KEY") or st.secrets.get("OPENROUTER_API_KEY")
@@ -13,7 +14,7 @@ client = OpenAI(
     http_client=httpx.Client(verify=False),
 )
 
-st.title("streamlitアプリ練習")
+st.title("生成AIチャットアプリ")
 user_input = st.chat_input("質問を入力してください")
 # ペルソナのドロップダウン
 persona = st.sidebar.selectbox("AIの設定", ["優しい先生", "厳しいコーチ", "関西弁の友達"])
@@ -24,9 +25,11 @@ persona_prompts = {
     "関西弁の友達": "あなたは関西弁の友達です。フランクに関西弁で話してください。",
 }
 
-uploadfile = st.file_uploader("ラベル", type = ["txt"])
+uploadfile = st.file_uploader("ラベル", type=["txt"])
 if uploadfile is not None:
     uploadprompt = uploadfile.read().decode("utf-8")
+    chunks = chunk_text(uploadprompt)
+    chunk_vectors = embed_chunks(chunks)
 
 # session_stateの初期化(if文で「まだ無ければ作る」)
 if "messages" not in st.session_state:
@@ -58,9 +61,11 @@ if user_input:
                     messages = [{"role": "user", "content": persona_prompts[persona]}] + st.session_state.messages    #ペルソナと履歴全体を渡す
                 )
             else:
+                relevant_chunks = search(user_input, chunks, chunk_vectors)
+                context = "\n".join(relevant_chunks)
                 response = client.chat.completions.create(
                     model = "google/gemma-3-4b-it:free",
-                    messages = [{"role": "user", "content": persona_prompts[persona]}] + [{"role": "user", "content": "以下の文書を参考に答えてください：\n\n" + uploadprompt}] + st.session_state.messages    #ペルソナと履歴全体を渡す
+                    messages = [{"role": "user", "content": persona_prompts[persona]}] + [{"role": "user", "content": "以下の文書を参考に答えてください：\n\n" + context}] + st.session_state.messages    #ペルソナと履歴全体を渡す
                 )
             answer = response.choices[0].message.content
             # AIの回答を追加
